@@ -35,7 +35,7 @@ unsigned long getDataTimer = 0;
 
 unsigned long lastReadCo2 = 0;
 int lastPPM = -1;
-boolean didHASetup = false;
+boolean lightOn = true;
 
 const char ssid[] = WIFI_SSID;
 const char pass[] = WIFI_PASSWORD;
@@ -52,7 +52,6 @@ void setColor();
 int readCO2(int minWait);
 void idleColor();
 void changestate();
-void breathe(unsigned long duration, int delay);
 void kringel();
 void setupco2();
 void printco2info();
@@ -66,9 +65,10 @@ void doPublish(const char *topic, const char *message, boolean retain);
 void setupHAPPM();
 void setupHATemp();
 void setupHACal();
-void callback(char* topic, byte* payload, unsigned int length);
+void setupHALight();
+void callback(char *topic, byte *payload, unsigned int length);
+void toggleLight();
 void calibrate();
-
 
 CRGBArray<NUM_LEDS> leds;
 HSVHue currenthue;
@@ -101,6 +101,7 @@ void setupHA(){
   setupHAPPM();
   setupHATemp();
   setupHACal();
+  setupHALight();
 }
 
 JsonObject addDevice(DynamicJsonDocument& doc ){
@@ -159,6 +160,17 @@ void setupHACal(){
   doPublish(HA_STAT_CAL,"ON",false);
 }
 
+void setupHALight(){
+  DynamicJsonDocument doc(256);
+  doc["name"]=HA_NODE_ID " " HA_OBJ_SW_LIGHT;
+  doc["uniq_id"]=HA_NODE_ID HA_OBJ_SW_LIGHT;
+  doc["stat_t"]=HA_STAT_LIGHT;
+  doc["cmd_t"]=HA_CMND_LIGHT;
+  addDevice(doc);
+  doPublish(HA_DISC_LIGHT,doc,true);
+  doPublish(HA_STAT_LIGHT,"ON",false);
+}
+
 void setupled(){
   FastLED.addLeds<NEOPIXEL,DATA_PIN>(leds, NUM_LEDS); 
 }
@@ -190,7 +202,7 @@ void connectMqtt(){
     delay(1000);
   }
   delay(100);
-  client.subscribe(HA_CMND_CAL);
+  client.subscribe("co2/co2thomas/+/cmnd");
   if(!client.connected()){
     Serial.print("NOT ");
   }
@@ -255,6 +267,7 @@ int readCO2(int minWait){
 
 void idleColor(){
   //Serial.println("idleColor");
+  if(lightOn){
   for(int i = 0; i < NUM_LEDS;i++){
     leds[i] = CHSV(currenthue,255,255);
   }
@@ -265,6 +278,7 @@ void idleColor(){
     }
     FastLED.delay(50);
   }
+  }
 }
 
 
@@ -273,47 +287,39 @@ void changestate(){
 }
 
 void changestate(HSVHue hue){
-  FastLED.setBrightness(BRIGHTNESS);
-  for(int l = 0; l<3; l++){
-    for(int i = 0; i < NUM_LEDS/2; i++) {   
-      leds.fadeToBlackBy(40);
-      leds[i] = CHSV(hue,255,255);
-      leds(NUM_LEDS/2,NUM_LEDS-1) = leds(NUM_LEDS/2 - 1 ,0);
-      FastLED.delay(33);
-    }
-  }
-}
-
-void breathe(unsigned long duration, int delay) {
-  unsigned long start = millis();
-  while(start + duration > millis()){
-    for(int b=BRIGHTNESS;b>0;b--){
-      FastLED.setBrightness(b);
-      FastLED.delay(delay);
-    }
-    for(int b=0;b<BRIGHTNESS;b++){
-      FastLED.setBrightness(b);
-      FastLED.delay(delay);
+  if(lightOn){
+    FastLED.setBrightness(BRIGHTNESS);
+    for(int l = 0; l<3; l++){
+      for(int i = 0; i < NUM_LEDS/2; i++) {   
+        leds.fadeToBlackBy(40);
+        leds[i] = CHSV(hue,255,255);
+        leds(NUM_LEDS/2,NUM_LEDS-1) = leds(NUM_LEDS/2 - 1 ,0);
+        FastLED.delay(33);
+      }
     }
   }
 }
 
 void kringel(){
-  HSVHue messung = HSVHue::HUE_AQUA;
-  for(int i = 0; i < NUM_LEDS;i++){
-    leds[i] = CHSV(messung,255,0);
-  }  
-  for(int i = 0;i<NUM_LEDS;i++){
-    leds[i] = CHSV(messung,255,50);
-    leds[(i+1)%NUM_LEDS]=CHSV(messung,255,100);
-    leds[(i+2)%NUM_LEDS] = CHSV(messung,255,200);
-    leds[(i+3)%NUM_LEDS] = CHSV(messung,255,255);
-    for(int j = 0; j < NUM_LEDS; j++){
-      if(j != i && j != (i+1)%NUM_LEDS && j != (i+2)%NUM_LEDS && j != (i+3)%NUM_LEDS){
-        leds[j] = CHSV(messung,255,0);
+  if(lightOn){
+    HSVHue messung = HSVHue::HUE_AQUA;
+    for(int i = 0; i < NUM_LEDS;i++){
+      leds[i] = CHSV(messung,255,0);
+    }  
+    for(int i = 0;i<NUM_LEDS;i++){
+      leds[i] = CHSV(messung,255,50);
+      leds[(i+1)%NUM_LEDS]=CHSV(messung,255,100);
+      leds[(i+2)%NUM_LEDS] = CHSV(messung,255,200);
+      leds[(i+3)%NUM_LEDS] = CHSV(messung,255,255);
+      for(int j = 0; j < NUM_LEDS; j++){
+        if(j != i && j != (i+1)%NUM_LEDS && j != (i+2)%NUM_LEDS && j != (i+3)%NUM_LEDS){
+          leds[j] = CHSV(messung,255,0);
+        }
       }
+      FastLED.delay(1000/NUM_LEDS);
     }
-    FastLED.delay(1000/NUM_LEDS);
+  }else{
+    delay(1000);
   }
 }
 
@@ -345,6 +351,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("] ");
   if(strcmp(topic,HA_CMND_CAL)==0){
     calibrate();
+  }else if(strcmp(topic,HA_CMND_LIGHT)==0){
+    toggleLight();
   }else{
     Serial.println("unknown");
   }
@@ -353,6 +361,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
 }
+
+void toggleLight(){
+  lightOn = !lightOn;
+  if(lightOn){
+    setColor();
+  }else{
+    FastLED.clear(true);
+  }
+}
+
 void calibrate(){
   Serial.println("calibrate now");
   myMHZ19.calibrate();
