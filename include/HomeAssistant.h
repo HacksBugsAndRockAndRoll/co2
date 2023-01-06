@@ -1,6 +1,3 @@
-//change this for each device
-#define HA_NODE_ID "co2thomas"
-
 #define HA_DISCOVERY_TOPIC "homeassistant"
 #define HA_COMP_SENSOR "sensor"
 #define HA_COMP_BTN "button"
