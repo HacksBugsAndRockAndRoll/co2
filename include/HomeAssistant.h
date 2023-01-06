@@ -9,6 +9,7 @@
 #define HA_OBJ_CO2 "ppm"
 #define HA_OBJ_TEMP "temp"
 #define HA_OBJ_BTN_CAL "calibrate"
+#define HA_OBJ_SW_LIGHT "light"
 #define HA_CONFIG "config"
 #define HA_STATE "stat"
 #define HA_COMMAND "cmnd"
@@ -25,3 +26,7 @@
 #define HA_DISC_CAL HA_DISC_BUTTON "/" HA_OBJ_BTN_CAL "/" HA_CONFIG
 #define HA_STAT_CAL HA_STAT "/" HA_OBJ_BTN_CAL "/" HA_STATE
 #define HA_CMND_CAL HA_STAT "/" HA_OBJ_BTN_CAL "/" HA_COMMAND
+
+#define HA_DISC_LIGHT HA_DISC_BUTTON "/" HA_OBJ_SW_LIGHT "/" HA_CONFIG
+#define HA_STAT_LIGHT HA_STAT "/" HA_OBJ_SW_LIGHT "/" HA_STATE
+#define HA_CMND_LIGHT HA_STAT "/" HA_OBJ_SW_LIGHT "/" HA_COMMAND
