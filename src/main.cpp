@@ -35,6 +35,7 @@ unsigned long getDataTimer = 0;
 
 unsigned long lastReadCo2 = 0;
 int lastPPM = -1;
+int lastTemp = -1;
 boolean lightOn = true;
 
 const char ssid[] = WIFI_SSID;
@@ -44,7 +45,7 @@ PubSubClient client(net);
 
 #define MSG_BUFFER_SIZE	(512)
 char mqttmsg[MSG_BUFFER_SIZE];
-char ppmValue [16];
+char bufNbr [16];
 
 void setupled();
 void changestate(HSVHue hue);
@@ -222,7 +223,8 @@ void loop(){
   int ppm = readCO2(10000);
   //Serial.printf("ppm: %d\n",ppm);
   if(ppm > 0){
-    client.publish(HA_STAT_PPM,itoa(ppm,ppmValue,10));
+    client.publish(HA_STAT_TEMP,itoa(lastTemp,bufNbr,10));
+    client.publish(HA_STAT_PPM,itoa(ppm,bufNbr,10));
     setColor();
     idleColor();
   }
@@ -251,6 +253,7 @@ int readCO2(int minWait){
     kringel();
     while(errcount < 3){
       ppm = myMHZ19.getCO2(false);
+      lastTemp = myMHZ19.getTemperature();
       if(ppm < 0){
         errcount++;
         delay(10);
