@@ -2,6 +2,7 @@
 #define HA_NODE_ID "co2thomas"
 #define HA_COMP_SENSOR "sensor"
 #define HA_COMP_BTN "button"
+#define HA_COMP_SWITCH "switch"
 #define HA_OBJ_CO2 "ppm"
 #define HA_OBJ_TEMP "temp"
 #define HA_OBJ_BTN_CAL "calibrate"
@@ -23,6 +24,7 @@
 #define HA_STAT_CAL HA_STAT "/" HA_OBJ_BTN_CAL "/" HA_STATE
 #define HA_CMND_CAL HA_STAT "/" HA_OBJ_BTN_CAL "/" HA_COMMAND
 
-#define HA_DISC_LIGHT HA_DISC_BUTTON "/" HA_OBJ_SW_LIGHT "/" HA_CONFIG
+#define HA_DISC_SWITCH HA_DISCOVERY_TOPIC "/" HA_COMP_SWITCH "/" HA_NODE_ID
+#define HA_DISC_LIGHT HA_DISC_SWITCH "/" HA_OBJ_SW_LIGHT "/" HA_CONFIG
 #define HA_STAT_LIGHT HA_STAT "/" HA_OBJ_SW_LIGHT "/" HA_STATE
 #define HA_CMND_LIGHT HA_STAT "/" HA_OBJ_SW_LIGHT "/" HA_COMMAND

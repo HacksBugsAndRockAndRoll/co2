@@ -37,6 +37,7 @@ unsigned long lastReadCo2 = 0;
 int lastPPM = -1;
 int lastTemp = -1;
 boolean lightOn = true;
+boolean syncLight = true;
 
 const char ssid[] = WIFI_SSID;
 const char pass[] = WIFI_PASSWORD;
@@ -68,7 +69,7 @@ void setupHATemp();
 void setupHACal();
 void setupHALight();
 void callback(char *topic, byte *payload, unsigned int length);
-void toggleLight();
+void toggleLight(boolean on);
 void calibrate();
 
 CRGBArray<NUM_LEDS> leds;
@@ -222,6 +223,10 @@ void loop(){
   delay(10);  // <- fixes some issues with WiFi stability
   int ppm = readCO2(10000);
   //Serial.printf("ppm: %d\n",ppm);
+  if(syncLight){
+    client.publish(HA_STAT_LIGHT,lightOn?"ON":"OFF");
+    syncLight = false;
+  }
   if(ppm > 0){
     client.publish(HA_STAT_TEMP,itoa(lastTemp,bufNbr,10));
     client.publish(HA_STAT_PPM,itoa(ppm,bufNbr,10));
@@ -352,26 +357,29 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
-  if(strcmp(topic,HA_CMND_CAL)==0){
-    calibrate();
-  }else if(strcmp(topic,HA_CMND_LIGHT)==0){
-    toggleLight();
-  }else{
-    Serial.println("unknown");
-  }
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
+
+  if(strcmp(topic,HA_CMND_CAL)==0){
+    calibrate();
+  }else if(strcmp(topic,HA_CMND_LIGHT)==0){
+    toggleLight((char)payload[1] == 'N');
+  }else{
+    Serial.println("unknown");
+  }
 }
 
-void toggleLight(){
-  lightOn = !lightOn;
+void toggleLight(boolean on){
+  Serial.printf("toggle light: %s\n",on?"ON":"OFF");
+  lightOn = on;
   if(lightOn){
     setColor();
   }else{
     FastLED.clear(true);
   }
+  syncLight = true;
 }
 
 void calibrate(){
