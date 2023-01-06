@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 
 #include <secrets.h>
-#include <ha.h>
+#include <HomeAssistant.h>
 
 
 #define FORCE_SPAN 0                                       // < --- set to 1 as an absoloute final resort
@@ -24,8 +24,6 @@
 //#define CO2DEBUG      //uncomment to include debug functions
 #define CO2HIGH 800
 #define CO2CRITICAL 2000
-#define CO2AVG 10
-#define PAUSE 30000
 
 MHZ19 myMHZ19;
 SoftwareSerial mySerial(RX_PIN, TX_PIN);                   // Uno example
@@ -35,6 +33,8 @@ unsigned long getDataTimer = 0;
 //Gnd - schwarz
 //Vin - rot
 
+unsigned long lastReadCo2 = 0;
+int lastPPM = -1;
 
 const char ssid[] = WIFI_SSID;
 const char pass[] = WIFI_PASSWORD;
@@ -48,20 +48,18 @@ char ppmValue [16];
 
 void setupled();
 void changestate(HSVHue hue);
+void setColor();
+int readCO2(int minWait);
+void idleColor();
 void changestate();
 void breathe(unsigned long duration, int delay);
-void pattern(HSVHue hue, int iterations, long del);
 void kringel();
-void pause(unsigned long wait);
 
 void setupco2();
 void printco2info();
-int readavgco2(void (*delayfun)());
-
-int co2lamp();
 
 
-void connect();
+
 void connectWiFi();
 void connectMqtt();
 void setupWiFi();
@@ -94,40 +92,6 @@ void setup() {
   #endif
 }
 
-void setupled(){
-  FastLED.addLeds<NEOPIXEL,DATA_PIN>(leds, NUM_LEDS); 
-}
-
-void setupco2()
-{
-  mySerial.begin(BAUDRATE);
-  myMHZ19.begin(mySerial);
-  myMHZ19.autoCalibration(true);
-  printco2info();
-}
-
-void connect(){
-  connectWiFi();
-  connectMqtt();
-}
-
-void connectWiFi(){
-    Serial.print("checking wifi...");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(1000);
-  }
-}
-
-void connectMqtt(){
-  Serial.print("\nMQTT connecting...");
-  while (!client.connect(HA_NODE_ID, "", "")) {
-    Serial.print(".");
-    delay(1000);
-  }
-  Serial.println("\nconnected!");
-}
-
 void setupWiFi(){
   WiFi.begin(ssid, pass);
   connectWiFi();
@@ -142,8 +106,8 @@ void setupMqtt(){
 void setupHA(){
   setupHAPPM();
   setupHATemp();
+  setupHACal();
 }
-
 
 void setupHAPPM(){
   DynamicJsonDocument doc(256);
@@ -164,7 +128,6 @@ void setupHAPPM(){
   Serial.println(mqttmsg);
   client.publish(HA_DISC_PPM,mqttmsg,true);
 }
-
 
 void setupHATemp(){
   DynamicJsonDocument doc(256);
@@ -206,6 +169,35 @@ void setupHACal(){
   client.publish(HA_STAT_CAL,"ON");
 }
 
+void setupled(){
+  FastLED.addLeds<NEOPIXEL,DATA_PIN>(leds, NUM_LEDS); 
+}
+
+void setupco2()
+{
+  mySerial.begin(BAUDRATE);
+  myMHZ19.begin(mySerial);
+  myMHZ19.autoCalibration(true);
+  printco2info();
+}
+
+void connectWiFi(){
+    Serial.print("checking wifi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(1000);
+  }
+}
+
+void connectMqtt(){
+  Serial.print("\nMQTT connecting...");
+  while (!client.connect(HA_NODE_ID, "", "")) {
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println("\nconnected!");
+}
+
 void loop(){ 
 
   if (WiFi.status() != WL_CONNECTED){
@@ -218,8 +210,13 @@ void loop(){
   delay(10);  // <- fixes some issues with WiFi stability
 
   #ifndef TESTING
-  client.publish(HA_STAT_PPM,itoa(co2lamp(),ppmValue,10));
-  pause(PAUSE);
+  int ppm = readCO2(10000);
+  Serial.printf("ppm: %d\n",ppm);
+  if(ppm > 0){
+    client.publish(HA_STAT_PPM,itoa(ppm,ppmValue,10));
+    setColor();
+    idleColor();
+  }
   #endif
   #ifdef TESTING
   client.publish(HA_STAT_PPM,itoa(millis()%1200,ppmValue,10));
@@ -227,56 +224,46 @@ void loop(){
   #endif
 }
 
-int co2lamp(){
-  int avgppm = readavgco2(kringel);
-
-  if(avgppm < 0){
-    //error reading CO2 avg
-    currenthue = HSVHue::HUE_PINK; 
-    changestate();
-    return -1;
-  }
-  if(avgppm < CO2HIGH){
+void setColor(){
+  Serial.println("setColor");
+  if (lastPPM < CO2HIGH){
     currenthue = HSVHue::HUE_GREEN;
-  }else if(avgppm > CO2CRITICAL){
+    if(lastPPM < 0){
+      //error reading CO2 avg
+      currenthue = HSVHue::HUE_PINK; 
+    }
+  }else if(lastPPM > CO2CRITICAL){
     currenthue = HSVHue::HUE_RED;
   }else{
     currenthue = HSVHue::HUE_ORANGE;
   }
   changestate();
-  return avgppm;
-  //breathe(PAUSE,33);
-  //kringel(hue,3000);
-  //pattern(hue, 3,1000);
 }
 
-int readavgco2(void (*delayfun)()){
-  int ppm = 0;
-  int errcount=0;
-  int count = 0;
-  int avg = 0;
-    while(errcount < 3 && count < CO2AVG){
+int readCO2(int minWait){
+  int errcount = 0;
+  int ppm = -1;
+  if(millis() > lastReadCo2 + minWait){
+    Serial.println("readCo2");
+    kringel();
+    while(errcount < 3){
       ppm = myMHZ19.getCO2(false);
-      if(ppm < 1){
+      if(ppm < 0){
         errcount++;
-        Serial.println("error reading CO2 ppm");
+        delay(10);
         continue;
+      }else{
+        lastReadCo2 = millis();
+        break;
       }
-      Serial.printf("CO2 ppm: %d\n",ppm);
-      count++;
-      avg += ppm;
-      delayfun();
+    }
+    lastPPM = ppm;
   }
-  if(errcount == 3){
-    return -1;
-  }
-  avg /= CO2AVG;
-  Serial.printf("AVG CO2 ppm: %d\n",avg);
-  return avg;
+  return ppm;
 }
 
-void pause(unsigned long wait){
-  unsigned long start = millis();
+void idleColor(){
+  Serial.println("idleColor");
   for(int i = 0; i < NUM_LEDS;i++){
     leds[i] = CHSV(currenthue,255,255);
   }
@@ -287,11 +274,8 @@ void pause(unsigned long wait){
     }
     FastLED.delay(50);
   }
-  unsigned long remaining = start + wait - millis();
-  if(remaining > 0 ){
-    FastLED.delay(remaining);
-  }
 }
+
 
 void changestate(){
   changestate(currenthue);
@@ -320,22 +304,6 @@ void breathe(unsigned long duration, int delay) {
       FastLED.setBrightness(b);
       FastLED.delay(delay);
     }
-  }
-}
-
-void pattern(HSVHue hue, int interations, long del){
-  FastLED.setBrightness(BRIGHTNESS);
-  for(int l = 0; l< interations; l++){
-    for (int i = 0; i < NUM_LEDS; i+=2){
-      leds[i].setHSV(hue,255,0);
-      leds[i+1].setHSV(hue,255,BRIGHTNESS);
-    }
-    FastLED.delay(del);
-    for (int i = 0; i < NUM_LEDS; i+=2){
-      leds[i+1].setHSV(hue,255,0);
-      leds[i].setHSV(hue,255,BRIGHTNESS);
-    }
-    FastLED.delay(del);
   }
 }
 
