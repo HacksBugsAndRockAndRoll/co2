@@ -1,12 +1,16 @@
-#define HA_DISCOVERY_TOPIC "homeassistant"
+//change this for each device
 #define HA_NODE_ID "co2thomas"
+
+#define HA_DISCOVERY_TOPIC "homeassistant"
 #define HA_COMP_SENSOR "sensor"
 #define HA_COMP_BTN "button"
 #define HA_COMP_SWITCH "switch"
+
 #define HA_OBJ_CO2 "ppm"
 #define HA_OBJ_TEMP "temp"
 #define HA_OBJ_BTN_CAL "calibrate"
 #define HA_OBJ_SW_LIGHT "light"
+
 #define HA_CONFIG "config"
 #define HA_STATE "stat"
 #define HA_COMMAND "cmnd"

@@ -9,7 +9,6 @@
 #include <secrets.h>
 #include <HomeAssistant.h>
 
-
 #define FORCE_SPAN 0                                       // < --- set to 1 as an absoloute final resort
 #define RX_PIN D1
 #define TX_PIN D2
@@ -21,13 +20,12 @@
 #define LED_TYPE WS2812
 #define BRIGHTNESS 60
 
-//#define CO2DEBUG      //uncomment to include debug functions
-#define CO2HIGH 800
+#define CO2HIGH 1000
 #define CO2CRITICAL 2000
+#define MINPAUSE 60000
 
 MHZ19 myMHZ19;
-SoftwareSerial mySerial(RX_PIN, TX_PIN);                   // Uno example
-unsigned long getDataTimer = 0;
+SoftwareSerial mySerial(RX_PIN, TX_PIN);
 //Rx - blau
 //Tx - gruen
 //Gnd - schwarz
@@ -48,29 +46,30 @@ PubSubClient client(net);
 char mqttmsg[MSG_BUFFER_SIZE];
 char bufNbr [16];
 
-void setupled();
-void changestate(HSVHue hue);
-void setColor();
-int readCO2(int minWait);
-void idleColor();
+void calibrate();
+void callback(char *topic, byte *payload, unsigned int length);
 void changestate();
-void kringel();
-void setupco2();
-void printco2info();
-void connectWiFi();
+void changestate(HSVHue hue);
 void connectMqtt();
-void setupWiFi();
-void setupMqtt();
-void setupHA();
+void connectWiFi();
 void doPublish(const char *topic, DynamicJsonDocument doc, boolean retain);
 void doPublish(const char *topic, const char *message, boolean retain);
-void setupHAPPM();
-void setupHATemp();
+void idleColor();
+void kringel(int times);
+void printco2info();
+int readCO2(int minWait);
+void setColor();
+void setupHA();
 void setupHACal();
 void setupHALight();
-void callback(char *topic, byte *payload, unsigned int length);
+void setupHAPPM();
+void setupHATemp();
+void setupMqtt();
+void setupWiFi();
+void setupco2();
+void setupled();
 void toggleLight(boolean on);
-void calibrate();
+
 
 CRGBArray<NUM_LEDS> leds;
 HSVHue currenthue;
@@ -186,7 +185,7 @@ void setupco2()
 }
 
 void connectWiFi(){
-  Serial.print("checking wifi...");
+  Serial.print("\nchecking wifi...");
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(1000);
@@ -221,7 +220,7 @@ void loop(){
   }
   client.loop();
   delay(10);  // <- fixes some issues with WiFi stability
-  int ppm = readCO2(10000);
+  int ppm = readCO2(MINPAUSE);
   //Serial.printf("ppm: %d\n",ppm);
   if(syncLight){
     client.publish(HA_STAT_LIGHT,lightOn?"ON":"OFF");
@@ -255,7 +254,7 @@ int readCO2(int minWait){
   int ppm = -1;
   if(millis() > lastReadCo2 + minWait){
     //Serial.println("readCo2");
-    kringel();
+    kringel(2);
     while(errcount < 3){
       ppm = myMHZ19.getCO2(false);
       lastTemp = myMHZ19.getTemperature();
@@ -276,16 +275,16 @@ int readCO2(int minWait){
 void idleColor(){
   //Serial.println("idleColor");
   if(lightOn){
-  for(int i = 0; i < NUM_LEDS;i++){
-    leds[i] = CHSV(currenthue,255,255);
-  }
-  FastLED.delay(50);
-  for(int b = 255; b > BRIGHTNESS;b--){
     for(int i = 0; i < NUM_LEDS;i++){
-      leds[i] = CHSV(currenthue,255,b);
+      leds[i] = CHSV(currenthue,255,255);
     }
     FastLED.delay(50);
-  }
+    for(int b = 255; b > BRIGHTNESS;b--){
+      for(int i = 0; i < NUM_LEDS;i++){
+        leds[i] = CHSV(currenthue,255,b);
+      }
+      FastLED.delay(50);
+    }
   }
 }
 
@@ -308,23 +307,25 @@ void changestate(HSVHue hue){
   }
 }
 
-void kringel(){
+void kringel(int times){
   if(lightOn){
     HSVHue messung = HSVHue::HUE_AQUA;
     for(int i = 0; i < NUM_LEDS;i++){
       leds[i] = CHSV(messung,255,0);
-    }  
-    for(int i = 0;i<NUM_LEDS;i++){
-      leds[i] = CHSV(messung,255,50);
-      leds[(i+1)%NUM_LEDS]=CHSV(messung,255,100);
-      leds[(i+2)%NUM_LEDS] = CHSV(messung,255,200);
-      leds[(i+3)%NUM_LEDS] = CHSV(messung,255,255);
-      for(int j = 0; j < NUM_LEDS; j++){
-        if(j != i && j != (i+1)%NUM_LEDS && j != (i+2)%NUM_LEDS && j != (i+3)%NUM_LEDS){
-          leds[j] = CHSV(messung,255,0);
+    }
+    for (int t = 0; t < times; t++){
+      for(int i = 0;i<NUM_LEDS;i++){
+        leds[i] = CHSV(messung,255,50);
+        leds[(i+1)%NUM_LEDS]=CHSV(messung,255,100);
+        leds[(i+2)%NUM_LEDS] = CHSV(messung,255,200);
+        leds[(i+3)%NUM_LEDS] = CHSV(messung,255,255);
+        for(int j = 0; j < NUM_LEDS; j++){
+          if(j != i && j != (i+1)%NUM_LEDS && j != (i+2)%NUM_LEDS && j != (i+3)%NUM_LEDS){
+            leds[j] = CHSV(messung,255,0);
+          }
         }
+        FastLED.delay(1000/NUM_LEDS);
       }
-      FastLED.delay(1000/NUM_LEDS);
     }
   }else{
     delay(1000);
