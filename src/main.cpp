@@ -69,6 +69,8 @@ void setupMqtt();
 void setupHA();
 void setupHAPPM();
 void setupHATemp();
+void setupHACal();
+void callback(char* topic, byte* payload, unsigned int length);
 
 //debug functions
 #ifdef CO2DEBUG
@@ -133,6 +135,7 @@ void setupWiFi(){
 
 void setupMqtt(){
   client.setServer(MQTT_BROKER_IP, 1883);
+  client.setCallback(callback);
   connectMqtt();
 }
 
@@ -181,6 +184,26 @@ void setupHATemp(){
   Serial.print("publishing: ");
   Serial.println(mqttmsg);
   client.publish(HA_DISC_TEMP,mqttmsg,true);
+}
+
+void setupHACal(){
+  DynamicJsonDocument doc(256);
+  doc["name"]=HA_NODE_ID " " HA_OBJ_BTN_CAL;
+  doc["uniq_id"]=HA_NODE_ID HA_OBJ_BTN_CAL;
+  doc["stat_t"]=HA_STAT_CAL;
+  doc["cmd_t"]=HA_CMND_CAL;
+  JsonObject device = doc.createNestedObject("dev");
+  device["name"]=HA_NODE_ID;
+  device["ids"]=HA_NODE_ID;
+  device["mf"]="SoxTech";
+  device["mdl"]="MH-Z19";
+  Serial.printf("publishing discovery info to %s\n",HA_DISC_CAL);
+  serializeJson(doc,mqttmsg);
+  Serial.print("publishing: ");
+  Serial.println(mqttmsg);
+  client.subscribe(HA_CMND_CAL);
+  client.publish(HA_DISC_CAL,mqttmsg,true);
+  client.publish(HA_STAT_CAL,"ON");
 }
 
 void loop(){ 
@@ -355,6 +378,16 @@ void printco2info(){
    Serial.print("Temperature Cal: ");
    Serial.println(myMHZ19.getTempAdjustment());
    Serial.print("ABC Status: "); myMHZ19.getABC() ? Serial.println("ON") :  Serial.println("OFF");
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
 }
 
 #ifdef CO2DEBUG
