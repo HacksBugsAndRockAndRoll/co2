@@ -72,17 +72,15 @@ void toggleLight(boolean on);
 
 
 CRGBArray<NUM_LEDS> leds;
-HSVHue currenthue;
+HSVHue currenthue = HSVHue::HUE_PINK;
 
 void setup() {
   Serial.begin(9600);
+  setupled();
+  setupco2();
   setupWiFi();
   setupMqtt();
   setupHA();
-  
-  setupled();
-  setupco2();
-  
 }
 
 void setupWiFi(){
@@ -173,7 +171,8 @@ void setupHALight(){
 }
 
 void setupled(){
-  FastLED.addLeds<NEOPIXEL,DATA_PIN>(leds, NUM_LEDS); 
+  FastLED.addLeds<NEOPIXEL,DATA_PIN>(leds, NUM_LEDS);
+  changestate();
 }
 
 void setupco2()
@@ -188,7 +187,7 @@ void connectWiFi(){
   Serial.print("\nchecking wifi...");
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
-    delay(1000);
+    FastLED.delay(1000);
   }
   if(WiFi.status() != WL_CONNECTED){
     Serial.print("NOT ");
@@ -200,9 +199,9 @@ void connectMqtt(){
   Serial.print("\nMQTT connecting...");
   while (!client.connect(HA_NODE_ID, "", "")) {
     Serial.print(".");
-    delay(1000);
+    FastLED.delay(1000);
   }
-  delay(100);
+  FastLED.delay(100);
   client.subscribe(HA_STAT "/+/" HA_COMMAND);
   if(!client.connected()){
     Serial.print("NOT ");
@@ -219,7 +218,7 @@ void loop(){
     connectMqtt();
   }
   client.loop();
-  delay(10);  // <- fixes some issues with WiFi stability
+  FastLED.delay(10);  // <- fixes some issues with WiFi stability
   int ppm = readCO2(MINPAUSE);
   //Serial.printf("ppm: %d\n",ppm);
   if(syncLight){
@@ -260,7 +259,7 @@ int readCO2(int minWait){
       lastTemp = myMHZ19.getTemperature();
       if(ppm < 0){
         errcount++;
-        delay(10);
+        FastLED.delay(10);
         continue;
       }else{
         lastReadCo2 = millis();
@@ -328,7 +327,7 @@ void kringel(int times){
       }
     }
   }else{
-    delay(1000);
+    FastLED.delay(1000);
   }
 }
 
@@ -379,6 +378,7 @@ void toggleLight(boolean on){
     setColor();
   }else{
     FastLED.clear(true);
+    FastLED.show();
   }
   syncLight = true;
 }
