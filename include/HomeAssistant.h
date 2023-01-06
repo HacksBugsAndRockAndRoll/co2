@@ -1,7 +1,3 @@
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
-#include <ArduinoJson.h>
-
 #define HA_DISCOVERY_TOPIC "homeassistant"
 #define HA_NODE_ID "co2thomas"
 #define HA_COMP_SENSOR "sensor"
