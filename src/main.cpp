@@ -203,7 +203,7 @@ void connectMqtt(){
     delay(1000);
   }
   delay(100);
-  client.subscribe("co2/co2thomas/+/cmnd");
+  client.subscribe(HA_STAT "/+/" HA_COMMAND);
   if(!client.connected()){
     Serial.print("NOT ");
   }
