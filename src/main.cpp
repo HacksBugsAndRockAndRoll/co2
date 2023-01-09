@@ -6,7 +6,6 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-#include <secrets.h>
 #include <HomeAssistant.h>
 
 #define FORCE_SPAN 0                                       // < --- set to 1 as an absoloute final resort
@@ -20,8 +19,8 @@
 #define LED_TYPE WS2812
 #define BRIGHTNESS 60
 
-#define CO2HIGH 1000
-#define CO2CRITICAL 2000
+#define CO2HIGH 800
+#define CO2CRITICAL 1600
 #define MINPAUSE 60000
 
 MHZ19 myMHZ19;
@@ -31,12 +30,27 @@ SoftwareSerial mySerial(RX_PIN, TX_PIN);
 //Gnd - schwarz
 //Vin - rot
 
+CRGBArray<NUM_LEDS> leds;
+HSVHue currenthue = HSVHue::HUE_PINK;
+
 unsigned long lastReadCo2 = 0;
 int lastPPM = -1;
 int lastTemp = -1;
 boolean lightOn = true;
-boolean syncLight = true;
 
+void changestate();
+void changestate(HSVHue hue);
+void idleColor();
+void kringel(int times);
+void printco2info();
+int readCO2(int minWait);
+void setColor();
+void setupco2();
+void setupled();
+
+#ifdef HA_FEATURES
+#include <secrets.h>
+boolean syncLight = true;
 const char ssid[] = WIFI_SSID;
 const char pass[] = WIFI_PASSWORD;
 WiFiClient net;
@@ -48,17 +62,10 @@ char bufNbr [16];
 
 void calibrate();
 void callback(char *topic, byte *payload, unsigned int length);
-void changestate();
-void changestate(HSVHue hue);
 void connectMqtt();
 void connectWiFi();
 void doPublish(const char *topic, DynamicJsonDocument doc, boolean retain);
 void doPublish(const char *topic, const char *message, boolean retain);
-void idleColor();
-void kringel(int times);
-void printco2info();
-int readCO2(int minWait);
-void setColor();
 void setupHA();
 void setupHACal();
 void setupHALight();
@@ -66,22 +73,7 @@ void setupHAPPM();
 void setupHATemp();
 void setupMqtt();
 void setupWiFi();
-void setupco2();
-void setupled();
 void toggleLight(boolean on);
-
-
-CRGBArray<NUM_LEDS> leds;
-HSVHue currenthue = HSVHue::HUE_PINK;
-
-void setup() {
-  Serial.begin(9600);
-  setupled();
-  setupco2();
-  setupWiFi();
-  setupMqtt();
-  setupHA();
-}
 
 void setupWiFi(){
   WiFi.begin(ssid, pass);
@@ -170,19 +162,6 @@ void setupHALight(){
   doPublish(HA_STAT_LIGHT,"ON",false);
 }
 
-void setupled(){
-  FastLED.addLeds<NEOPIXEL,DATA_PIN>(leds, NUM_LEDS);
-  changestate();
-}
-
-void setupco2()
-{
-  mySerial.begin(BAUDRATE);
-  myMHZ19.begin(mySerial);
-  myMHZ19.autoCalibration(true);
-  printco2info();
-}
-
 void connectWiFi(){
   Serial.print("\nchecking wifi...");
   while (WiFi.status() != WL_CONNECTED) {
@@ -209,8 +188,71 @@ void connectMqtt(){
   Serial.println("connected!");
 }
 
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+
+  if(strcmp(topic,HA_CMND_CAL)==0){
+    calibrate();
+  }else if(strcmp(topic,HA_CMND_LIGHT)==0){
+    toggleLight((char)payload[1] == 'N');
+  }else{
+    Serial.println("unknown");
+  }
+}
+
+void toggleLight(boolean on){
+  Serial.printf("toggle light: %s\n",on?"ON":"OFF");
+  lightOn = on;
+  if(lightOn){
+    setColor();
+  }else{
+    FastLED.clear(true);
+    FastLED.show();
+  }
+  syncLight = true;
+}
+
+void calibrate(){
+  Serial.println("calibrate now");
+  myMHZ19.calibrate();
+}
+#endif
+
+void setup() {
+  Serial.begin(9600);
+  setupled();
+  setupco2();
+  #ifdef HA_FEATURES
+  setupWiFi();
+  setupMqtt();
+  setupHA();
+  #endif
+}
+
+
+
+void setupled(){
+  FastLED.addLeds<NEOPIXEL,DATA_PIN>(leds, NUM_LEDS);
+  changestate();
+}
+
+void setupco2()
+{
+  mySerial.begin(BAUDRATE);
+  myMHZ19.begin(mySerial);
+  myMHZ19.autoCalibration(true);
+  printco2info();
+}
+
 void loop(){ 
 
+  #ifdef HA_FEATURES
   if (WiFi.status() != WL_CONNECTED){
     connectWiFi();
   }
@@ -219,15 +261,20 @@ void loop(){
   }
   client.loop();
   FastLED.delay(10);  // <- fixes some issues with WiFi stability
+  #endif
   int ppm = readCO2(MINPAUSE);
   //Serial.printf("ppm: %d\n",ppm);
+  #ifdef HA_FEATURES
   if(syncLight){
     client.publish(HA_STAT_LIGHT,lightOn?"ON":"OFF");
     syncLight = false;
   }
+  #endif
   if(ppm > 0){
+    #ifdef HA_FEATURES
     client.publish(HA_STAT_TEMP,itoa(lastTemp,bufNbr,10));
     client.publish(HA_STAT_PPM,itoa(ppm,bufNbr,10));
+    #endif
     setColor();
     idleColor();
   }
@@ -351,39 +398,4 @@ void printco2info(){
    Serial.print("Temperature Cal: ");
    Serial.println(myMHZ19.getTempAdjustment());
    Serial.print("ABC Status: "); myMHZ19.getABC() ? Serial.println("ON") :  Serial.println("OFF");
-}
-
-void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
-  }
-  Serial.println();
-
-  if(strcmp(topic,HA_CMND_CAL)==0){
-    calibrate();
-  }else if(strcmp(topic,HA_CMND_LIGHT)==0){
-    toggleLight((char)payload[1] == 'N');
-  }else{
-    Serial.println("unknown");
-  }
-}
-
-void toggleLight(boolean on){
-  Serial.printf("toggle light: %s\n",on?"ON":"OFF");
-  lightOn = on;
-  if(lightOn){
-    setColor();
-  }else{
-    FastLED.clear(true);
-    FastLED.show();
-  }
-  syncLight = true;
-}
-
-void calibrate(){
-  Serial.println("calibrate now");
-  myMHZ19.calibrate();
 }

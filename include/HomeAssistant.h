@@ -1,3 +1,4 @@
+#define HA_FEATURES
 #define HA_DISCOVERY_TOPIC "homeassistant"
 #define HA_COMP_SENSOR "sensor"
 #define HA_COMP_BTN "button"
